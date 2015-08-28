@@ -3,13 +3,14 @@
 --------------------------------------------------------------------------------
 import Graphics.Gloss
 import Graphics.Gloss.Interface.Pure.Game
+import Graphics.Gloss.Data.Vector
 import Debug.Trace
 import System.Random
-
+import Data.Foldable
 
 -- Constants
 
-antV = 5.0
+antV = 2.0
 antRadius = 20.0
 foodW = 50.0
 foodH = 50.0
@@ -20,14 +21,12 @@ mapD = 700
 data AntState = Forage | Sleep
 
 data Ant = Ant {
-  antX :: Float,
-  antY :: Float,
+  avec :: Vector,
   state :: AntState
 }
 
 data Food = Food {
-  foodX :: Float,
-  foodY :: Float
+  fvec :: Vector
 }
 
 data World = World {
@@ -39,31 +38,35 @@ data World = World {
 -- Functions
 
 moveAnt :: Food -> Ant -> Ant
-moveAnt (Food fx fy) (Ant x y s) = Ant newX newY s
-  where (udx, udy) = getUnitDs (fx,fy) (x,y)
-        (newX, newY) = ((x + (udx * antV)), (y + (udy * antV)))
+moveAnt (Food fvec) (Ant avec s) = Ant newvec s
+  where newvec =  plu avec $ mulSV antV $ normalizeV $ minu fvec avec
 
-nudgeAnt :: Ant -> Ant -> Ant
-nudgeAnt (Ant x' y' _) ant@(Ant x y s) = if d < 70.0 then newAnt else ant
-  where (udx, udy) = getUnitDs (x,y) (x',y')
-        d = dist (x', y') (x,y)
-        (newX, newY) = ((x + (udx * 3.0)), (y + (udy * 3.0)))
-        newAnt = (Ant newX newY s)
+spaceAnt :: Ant -> Ant -> Ant
+spaceAnt (Ant avec _) b@(Ant bvec s)
+  | magV diff < 50.0 = Ant repulse s
+  | otherwise = b
+  where diff = minu bvec avec
+        modmag = (magV diff) ^ 2
+        repulse = plu bvec $ mulSV 1.0 $ normalizeV diff
+
+cycleAnts :: [Ant] -> [Ant] -> (Ant -> Ant -> Ant) -> [Ant]
+cycleAnts [] _ _ = []
+cycleAnts (a:as) (b:bs) f = (foldr f a bs):(cycleAnts as (bs ++ [a]) f)
 
 spaceAnts :: [Ant] -> [Ant]
 spaceAnts [] = []
-spaceAnts (ant:ants) = (map (nudgeAnt ant) ants) ++ [ant]
+spaceAnts ants = cycleAnts ants ants spaceAnt
 
 moveFood :: [Ant] -> Food -> Float -> Float -> Food
-moveFood ants f@(Food fx fy) newX newY
-  | any (\(Ant ax ay _) -> (dist (ax,ay) (fx,fy)) < 3.0) ants = Food newX newY
+moveFood ants f@(Food fvec) newX newY
+  | any (\(Ant avec _) -> (magV (minu fvec avec)) < 3.0) ants = Food (newX,newY)
   | otherwise = f
 
 drawAnt :: Ant -> Picture
-drawAnt (Ant x y s) = Translate x y (circleSolid antRadius)
+drawAnt (Ant (x,y) s) = Translate x y (circleSolid antRadius)
 
 drawFood :: Food -> Picture
-drawFood (Food x y) = Translate x y (rectangleSolid foodW foodH)
+drawFood (Food (x,y)) = Translate x y (rectangleSolid foodW foodH)
 
 draw :: World -> Picture
 draw (World ants food _) = Pictures $ (map drawAnt ants) ++ [(drawFood food)]
@@ -73,7 +76,7 @@ event e w = w
 
 step :: Float -> World -> World
 step f (World ants food rng) = World {
-    ants = map (moveAnt food) $ spaceAnts ants,
+    ants = spaceAnts $ map (moveAnt food) ants,
     food = moveFood ants food (clean num) (clean num'),
     numGen = rng''
   }
@@ -88,15 +91,15 @@ main =  do
           let (a, nng) = next ng
           let b = (mod a 700) - 350
           let initialWorld = World {
-            ants = [(Ant 0 0 Sleep),
-                   (Ant 40 (-30) Sleep),
-                   (Ant (-300) 20 Sleep),
-                   (Ant (-100) 190 Forage),
-                   (Ant (50) 220 Forage),
-                   (Ant (-300) 120 Forage),
-                   (Ant (5) 320 Sleep),
-                   (Ant (-50) (-300) Forage)],
-            food = (Food (realToFrac y) (realToFrac b)),
+            ants = [(Ant (0,0) Sleep),
+                   (Ant (40,(-30)) Sleep),
+                   (Ant ((-300),20) Sleep),
+                   (Ant ((-100),190) Forage),
+                   (Ant ((50),220) Forage),
+                   (Ant ((-300),120) Forage),
+                   (Ant ((5),320) Sleep),
+                   (Ant ((-50),(-300)) Forage)],
+            food = (Food ((realToFrac y),(realToFrac b))),
             numGen = nng
           }
           play (InWindow "Haskell Ants" (mapD, mapD) (10, 10))
@@ -106,8 +109,6 @@ main =  do
                 draw
                 event
                 step
-
-
 
 -- Helpers
 
@@ -121,4 +122,11 @@ getUnitDs :: (Float, Float) -> (Float, Float) -> (Float, Float)
 getUnitDs (a,b) (x,y) = (cos fixed, sin fixed)
     where r = (atan $ (b - y) / (a - x))
           fixed = if a < x then pi + r else r
+
+minu :: Vector -> Vector -> Vector
+minu (x,y) (x',y') = (x - x', y - y')
+
+plu :: Vector -> Vector -> Vector
+plu (x,y) (x',y') = (x + x', y + y')
+
 
