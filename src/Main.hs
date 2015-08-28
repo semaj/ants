@@ -65,6 +65,9 @@ cyclePredAnts (a:as) (b:bs) fl c p t = newa:(cyclePredAnts as (bs ++ [a]) fl c p
 sleepAnts :: [Ant] -> [Ant]
 sleepAnts ants = cyclePredAnts ants ants 60.0 (\x -> (state x) == Forage) (> 2) (\ a -> a { state = Sleep })
 
+wakeAnts :: [Ant] -> [Ant]
+wakeAnts ants = cyclePredAnts ants ants 60.0 (\x -> (state x) == Forage) (> 1) (\ a -> a { state = Forage })
+
 cycleAnts :: [Ant] -> [Ant] -> (Ant -> Ant -> Ant) -> [Ant]
 cycleAnts [] _ _ = []
 cycleAnts (a:as) (b:bs) f = (foldr f a bs):(cycleAnts as (bs ++ [a]) f)
@@ -93,7 +96,7 @@ event e w = w
 
 step :: Float -> World -> World
 step f (World ants food rng) = World {
-    ants = sleepAnts $ spaceAnts $ map (moveAnt food) ants,
+    ants = wakeAnts $ sleepAnts $ spaceAnts $ map (moveAnt food) ants,
     food = moveFood ants food (clean num) (clean num'),
     numGen = rng''
   }
